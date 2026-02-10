@@ -1,0 +1,52 @@
+@page "/tickets"
+@using AspireTickets.Shared.Pagination
+@using AspireTickets.Web
+@attribute [StreamRendering(true)]
+@attribute [OutputCache(Duration = 5)]
+
+@inject TicketApiClient TicketApi
+@inject ILogger<Tickets> Logger
+
+<PageTitle>Tickets</PageTitle>
+
+<h1>Tickets</h1>
+<p>This component demonstrates showing data loaded from a backend API service.</p>
+
+@if (tickets == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Create Date</th>
+                <th >Subject</th>
+                <th >Description</th>
+                <th >Created By</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var ticket in tickets)
+            {
+                <tr>
+                    <td>@ticket.CreatedDate.ToShortDateString()</td>
+                    <td>@ticket.Subject</td>
+                    <td>@ticket.Description</td>
+                    <td>@ticket.CreatedBy</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private TicketItem[]? tickets;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tickets = await TicketApi.GetTicketsAsync();
+        Logger.LogInformation("Loaded {TicketCount} tickets from API.", tickets?.Length ?? 0);
+    }
+}
