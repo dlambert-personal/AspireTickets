@@ -1,8 +1,9 @@
 @page "/tickets"
 @using AspireTickets.Shared.Pagination
 @using AspireTickets.Web
-@attribute [StreamRendering(true)]
+@using Microsoft.AspNetCore.Components
 @attribute [OutputCache(Duration = 5)]
+@rendermode InteractiveServer
 
 @inject TicketApiClient TicketApi
 @inject ILogger<Tickets> Logger
@@ -11,6 +12,43 @@
 
 <h1>Tickets</h1>
 <p>This component demonstrates showing data loaded from a backend API service.</p>
+
+<div class="mb-4">
+    <h2>Create / Edit Ticket</h2>
+    <div>
+        <div class="mb-3">
+            <label for="subject" class="form-label">Subject</label>
+            <input type="text" class="form-control" id="subject" @bind="newTicket.Subject" />
+        </div>
+        <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" id="description" @bind="newTicket.Description" rows="3"></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="createdBy" class="form-label">Created By</label>
+            <input type="text" class="form-control" id="createdBy" @bind="newTicket.CreatedBy" />
+        </div>
+        <button type="button" class="btn btn-primary me-2" @onclick="HandleCreateTicket" disabled="@(isCreating ? "disabled" : null)">
+            @if (isCreating)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <span>Saving...</span>
+            }
+            else
+            {
+                <span>@(isEditing ? "Save Changes" : "Create Ticket")</span>
+            }
+        </button>
+        @if (isEditing)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+        }
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">@errorMessage</div>
+        }
+    </div>
+</div>
 
 @if (tickets == null)
 {
@@ -22,9 +60,10 @@ else
         <thead>
             <tr>
                 <th>Create Date</th>
-                <th >Subject</th>
-                <th >Description</th>
-                <th >Created By</th>
+                <th>Subject</th>
+                <th>Description</th>
+                <th>Created By</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -35,6 +74,9 @@ else
                     <td>@ticket.Subject</td>
                     <td>@ticket.Description</td>
                     <td>@ticket.CreatedBy</td>
+                    <td>
+                        <button class="btn btn-link" @onclick="() => EditTicket(ticket)">Edit</button>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -43,10 +85,108 @@ else
 
 @code {
     private TicketItem[]? tickets;
+    private bool isCreating = false;
+    private bool isEditing = false;
+    private string? errorMessage;
+    
+    private CreateTicketFormModel newTicket = new();
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadTickets();
+    }
+
+    private async Task LoadTickets()
+    {
         tickets = await TicketApi.GetTicketsAsync();
         Logger.LogInformation("Loaded {TicketCount} tickets from API.", tickets?.Length ?? 0);
+    }
+
+    private async Task HandleCreateTicket()
+    {
+        Logger.LogInformation("Button clicked - HandleCreateTicket called");
+        
+        // Validate form data
+        if (string.IsNullOrWhiteSpace(newTicket.Subject))
+        {
+            Logger.LogWarning("Validation failed: Subject is required");
+            errorMessage = "Subject is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newTicket.Description))
+        {
+            Logger.LogWarning("Validation failed: Description is required");
+            errorMessage = "Description is required";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newTicket.CreatedBy))
+        {
+            Logger.LogWarning("Validation failed: Created By is required");
+            errorMessage = "Created By is required";
+            return;
+        }
+
+        isCreating = true;
+        errorMessage = null;
+        Logger.LogInformation("Saving ticket with Subject: {Subject}", newTicket.Subject);
+
+        try
+        {
+            if (newTicket.Id == Guid.Empty)
+            {
+                await TicketApi.CreateTicketAsync(newTicket.Subject, newTicket.Description, newTicket.CreatedBy);
+                Logger.LogInformation("Successfully created ticket: {Subject}", newTicket.Subject);
+            }
+            else
+            {
+                await TicketApi.UpdateTicketAsync(newTicket.Id, newTicket.Subject, newTicket.Description, newTicket.CreatedBy);
+                Logger.LogInformation("Successfully updated ticket: {Id}", newTicket.Id);
+            }
+
+            // Reset form and reload tickets
+            newTicket = new();
+            isEditing = false;
+            await LoadTickets();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save ticket");
+            errorMessage = $"Failed to save ticket: {ex.Message}";
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private void EditTicket(TicketItem ticket)
+    {
+        newTicket = new CreateTicketFormModel
+        {
+            Id = ticket.Id,
+            Subject = ticket.Subject,
+            Description = ticket.Description,
+            CreatedBy = ticket.CreatedBy
+        };
+
+        isEditing = true;
+        errorMessage = null;
+    }
+
+    private void CancelEdit()
+    {
+        newTicket = new CreateTicketFormModel();
+        isEditing = false;
+        errorMessage = null;
+    }
+
+    public class CreateTicketFormModel
+    {
+        public Guid Id { get; set; } = Guid.Empty;
+        public string Subject { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string CreatedBy { get; set; } = string.Empty;
     }
 }

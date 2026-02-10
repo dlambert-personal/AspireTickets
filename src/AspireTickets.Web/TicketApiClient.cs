@@ -58,6 +58,60 @@ public class TicketApiClient(HttpClient httpClient, ILogger<TicketApiClient> log
 
         return tickets?.ToArray() ?? [];
     }
+
+    public async Task<CreateTicketResponse> CreateTicketAsync(string subject, string description, string createdBy, CancellationToken cancellationToken = default)
+    {
+        var request = new CreateTicketRequest(subject, description, createdBy);
+        var response = await httpClient.PostAsJsonAsync("/Ticketitems", request, cancellationToken);
+        
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        logger.LogDebug("POST /Ticketitems returned {StatusCode}. Payload: {Payload}", response.StatusCode, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Create Ticket API returned non-success status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException($"Failed to create ticket: {response.StatusCode}");
+        }
+
+        try
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<CreateTicketResponse>(content, options);
+            return result ?? throw new InvalidOperationException("Failed to deserialize create ticket response");
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to deserialize CreateTicketResponse. Response JSON: {Json}", content);
+            throw;
+        }
+    }
+
+    public async Task<EditTicketResponse> UpdateTicketAsync(Guid id, string subject, string description, string createdBy, CancellationToken cancellationToken = default)
+    {
+        var request = new EditTicketRequest(subject, description, createdBy);
+        var response = await httpClient.PutAsJsonAsync($"/Ticketitems/{id}", request, cancellationToken);
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        logger.LogDebug("PUT /Ticketitems/{Id} returned {StatusCode}. Payload: {Payload}", id, response.StatusCode, content);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Update Ticket API returned non-success status {StatusCode}", response.StatusCode);
+            throw new HttpRequestException($"Failed to update ticket: {response.StatusCode}");
+        }
+
+        try
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var result = JsonSerializer.Deserialize<EditTicketResponse>(content, options);
+            return result ?? throw new InvalidOperationException("Failed to deserialize edit ticket response");
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to deserialize EditTicketResponse. Response JSON: {Json}", content);
+            throw;
+        }
+    }
 }
 
 public record GetTicketsResponse(PaginatedResult<TicketItem> Tickets);
@@ -65,3 +119,7 @@ public record TicketItem(Guid Id, string Subject, string Description, DateTime C
 {
     // {"tickets":{"pageIndex":0,"pageSize":10,"count":1,"data":[{"id":"43c25b92-9684-4164-b1f2-483e4fed9eb1","subject":"New subject","description":"ticket description","createdDate":"2026-02-04T20:00:46.3055421","createdBy":"dlambert"}]}}
 }
+public record CreateTicketRequest(string Subject, string Description, string CreatedBy);
+public record CreateTicketResponse(Guid Id);
+public record EditTicketRequest(string Subject, string Description, string CreatedBy);
+public record EditTicketResponse(Guid Id);
